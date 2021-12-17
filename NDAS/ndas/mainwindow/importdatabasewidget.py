@@ -78,6 +78,8 @@ class DatabaseSettingsWidget(QWidget):
 		self.setLayout(layout)
 
 
+	# patientid:	first text field
+	# database:		asic_data_sepsis or asic_data_mimic
 	def loadPatient(self, parent, patientid, database):
 		filename = os.getcwd()+"\\ndas\\local_data\\imported_patients\\{}_patient_{}.csv".format(database, str(patientid))
 		result = 0
