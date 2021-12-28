@@ -9,147 +9,116 @@ from datetime import datetime
 import os
 import paramiko
 
-# %%
+from datacollector.databases import read_sql_query
+import pandas as pd
+
+currentPath = os.path.dirname(__file__)
+
+Table = namedtuple('Table', ['name', 'type', 'relevant_columns', 'parameter_identifier_column'])
+tables = []
+with open("./Interface_tables.csv") as parameter_csv:
+	csv_reader_object = csv.reader(parameter_csv, delimiter=";")
+	firstLineFlag = True
+	for row in csv_reader_object:
+		if firstLineFlag:
+			firstLineFlag = False
+			continue
+		tables.append(Table(name=row[0], type=int(row[1]), relevant_columns=row[2], parameter_identifier_column=row[3]))
+
+Parameter = namedtuple('Parameter', ['name','database', 'tables', 'parameter_identifier'])
+parameters = []
+with open("./Interface_parameter.csv") as parameter_csv:
+	csv_reader_object = csv.reader(parameter_csv, delimiter=";")
+	firstLineFlag = True
+	for row in csv_reader_object:
+		if firstLineFlag:
+			firstLineFlag = False
+			continue
+		parameterTables = row[2].split(",")
+		tableReferences = []
+		for table in tables:
+			for parameterTable in parameterTables:
+				if table.name == parameterTable:
+					tableReferences.append(table)
+		if len(tableReferences) == 0:
+			print("Error reading parameter table: Table(s) not found in parameter " + row[0] + " (Database " + row[1] + ")")
+			continue
+		if tableReferences[0].type == 1:
+			parameterIdentifier = row[3].split(",")
+			parameterIdentifier = list(map(int, parameterIdentifier))
+			parameters.append(Parameter(name=row[0], database=row[1], tables=tableReferences, parameter_identifier=parameterIdentifier))
+		elif tableReferences[0].type == 2:
+			parameters.append(Parameter(name=row[0], database=row[1], tables=tableReferences, parameter_identifier=row[3]))
+
 
 def startInterface(argv):
-	# %%
-	Table = namedtuple('Table', ['name', 'type', 'relevant_columns', 'parameter_identifier_column'])
-	Parameter = namedtuple('Parameter', ['name','database', 'tables', 'parameter_identifier'])
-	currentPath = os.path.dirname(__file__)
-
-
 	########## SSH LOGIN ##########
-	sshLoginDataFile = open(os.getcwd()+"\\ndas\\local_data\\sshSettings.json")
-	sshLoginData = json.load(sshLoginDataFile)
+	# sshLoginDataFile = open("../local_data/sshSettings.json")
+	# sshLoginData = json.load(sshLoginDataFile)
 
-	databaseConfigurationFile = open(os.getcwd()+"\\ndas\\local_data\\db_asic_scheme.json")
-	databaseConfiguration = json.load(databaseConfigurationFile)
-	# Establish ssh connection to the database server
-	host = "137.226.78.84"
-	port = 22
-	username = sshLoginData["username"]
-	password = sshLoginData["password"]
-	ssh = paramiko.SSHClient()
-	ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-	ssh.connect(host, port, username, password)
+	# databaseConfigurationFile = open("../local_data/db_asic_scheme.json")
+	# databaseConfiguration = json.load(databaseConfigurationFile)
+	# # Establish ssh connection to the database server
+	# host = "137.226.78.84"
+	# port = 22
+	# username = sshLoginData["username"]
+	# password = sshLoginData["password"]
+	# ssh = paramiko.SSHClient()
+	# ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+	# ssh.connect(host, port, username, password)
 	###############################
+	ssh = None
+	databaseConfiguration = None
 
-	# %%
-	########## parse tables and parameters ##########
-	#----------------------
-	#-----Tables-----------
-	#----------------------
-	tables = []
-	with open(currentPath + "\\Interface_tables.csv") as parameter_csv:
-		csv_reader_object = csv.reader(parameter_csv, delimiter=";")
-		firstLineFlag = True
-		for row in csv_reader_object:
-			if firstLineFlag:
-				firstLineFlag = False
-				continue
-			tables.append(Table(name=row[0], type=int(row[1]), relevant_columns=row[2], parameter_identifier_column=row[3]))
+	# TODO: need to call ssh.close() (?)
 
-
-	#----------------------
-	#----Parameter list----
-	#----------------------
-	parameters = []
-	with open(currentPath + "\\Interface_parameter.csv") as parameter_csv:
-		csv_reader_object = csv.reader(parameter_csv, delimiter=";")
-		firstLineFlag = True
-		for row in csv_reader_object:
-			if firstLineFlag:
-				firstLineFlag = False
-				continue
-			parameterTables = row[2].split(",")
-			tableReferences = []
-			for table in tables:
-				for parameterTable in parameterTables:
-					if table.name == parameterTable:
-						tableReferences.append(table)
-			if len(tableReferences) == 0:
-				print("Error reading parameter table: Table(s) not found in parameter " + row[0] + " (Database " + row[1] + ")")
-				continue
-			if tableReferences[0].type == 1:
-				parameterIdentifier = row[3].split(",")
-				parameterIdentifier = list(map(int, parameterIdentifier))
-				parameters.append(Parameter(name=row[0], database=row[1], tables=tableReferences, parameter_identifier=parameterIdentifier))
-			elif tableReferences[0].type == 2:
-				parameters.append(Parameter(name=row[0], database=row[1], tables=tableReferences, parameter_identifier=row[3]))
-
-
-	# %%
 	# Calls
 	# loadPatient:					startInterface(["interface", "db_asic_scheme.json", "selectPatient", str(patientid), database])
 	# showPatients:					startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", "entriesTotal", numberOfPatients, db])
 	# showPatientsWithParameter:	startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", self.parameters, numberOfPatients, db])
-	# 
-	# arguments:
-	# 2 dataDensity
-		# 3 patientid
-			# 5 entriesTotal, (else)
-		# 3 bestPatients
-			# 5 entriesTotal, (else)
-	# 2 selectPatient
-		# 3 <patientid>
-		# 4 database (asic_data_sepsis or asic_data_mimic)
-	# 2 (else)
-		# - (??)
 	
 	# TODO: in some cases, the ssh connection is left open
 	if argv[2] == "selectPatient":
-		return selectPatient(argv, ssh, databaseConfiguration)
+		res = selectPatient(argv, ssh, databaseConfiguration)
 	elif argv[2] == "dataDensity":
-		return dataDensity(argv, ssh, databaseConfiguration, parameters)
+		if argv[4] == "entriesTotal":
+			res = density_per_patient(argv)
+		else:
+			res = density_per_parameter(argv, ssh, databaseConfiguration)
 	else:
-		found = False
-		for parameter in parameters:
-			if parameter.name == argv[3] and parameter.database == argv[2]:
-				for table in parameter.tables:
-					identifier = ""
-					result = ""
-					firstLine = table.relevant_columns.split(",")
-					if table.type == 1:
-						for id in parameter.parameter_identifier:
-							identifier = identifier + table.parameter_identifier_column + ' = ' + str(id) + " or "
-						identifier = identifier[:-4]
-						cur.execute('SELECT ' + table.relevant_columns + ' FROM ' + table.name + ' WHERE ' + identifier)
-						result = cur.fetchall()
-					elif table.type == 2:
-						index = 0
-						for arg in argv:
-							if index < 3:
-								index+=1
-								continue
-							if arg == "noNullValues" and index == len(argv)-1:
-								break
-							found2 = False
-							for parameter2 in parameters:
-								if parameter2.name == arg and parameter2.database == argv[2]:
-									found2 = True
-									firstLine.append(parameter2.parameter_identifier)
-									identifier = identifier + parameter2.parameter_identifier + ", "
-							if found2 == False:
-								print("Unknown parameter " + arg + " in database " + argv[2])
-							index+=1
-						identifier = identifier[:-2]
-						if argv[len(argv)-1] == "noNullValues":
-							identifierComplete = identifier.replace(", ", " and ") + " IS NOT NULL"
-						else:
-							identifierComplete = identifier.replace(", ", " or ") + " IS NOT NULL"
-						cur.execute('SELECT ' + table.relevant_columns + ', ' + identifier + ' FROM ' + table.name + ' WHERE ' + identifierComplete)
-						result = cur.fetchall()
-					file = open("queryResult.csv", 'a')
-					writer = csv.writer(file, delimiter=";", quoting=csv.QUOTE_ALL)
-					writer.writerow(firstLine)
-					for line in result:
-						newLine = list(line)
-						writer.writerow(newLine)	
-				found = True		
-				break
-		if found == False:
-			print("Unknown parameter " + argv[3] + " in database " + argv[2])
+		res = None
+	
+	if ssh:
 		ssh.close()
+	return res
+
+# %%
+
+def density_per_patient(argv):
+	df = read_sql_query(f'select patientid, entriesTotal from SMITH_ASIC_SCHEME.asic_lookup_{argv[6]} order by entriesTotal desc limit {argv[5]}')
+	return '\n'.join(df[['patientid', 'entriesTotal']].astype(str).agg(' | '.join, axis=1))
+
+display(startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", "entriesTotal", 10, 'mimic']))
+
+
+# %%
+
+
+
+# %%
+
+def density_per_parameter(argv, ssh, databaseConfiguration):
+	# search for the patient who has the most entries in the given table for the specified parameters
+	stdin, stdout, stderr = ssh.exec_command('mysql -h{} -u{} -p{} SMITH_SepsisDB -e "select patientid, {} from (select *, ({}) as numberOfEntries from SMITH_ASIC_SCHEME.asic_lookup_{} order by numberOfEntries desc limit {}) as sub;"'.format(databaseConfiguration['host'], databaseConfiguration['username'], databaseConfiguration['password'],argv[4], argv[4].replace(",","+"), argv[6], argv[5]))
+	if stderr.readlines() != []:
+		print(stderr.readlines())
+		return -2
+	results = stdout.readlines()
+	if results[1:] == []:
+		return -1	
+	return results
+
+# %%
 
 def selectPatient(argv, ssh, databaseConfiguration):
 	# selects the patient from the given table (argv[4]) with the specified patient id (argv[3])
@@ -189,9 +158,9 @@ def selectPatient(argv, ssh, databaseConfiguration):
 		temp[0] = temp[0] - smallestTimestamp
 		convertedRows.append(tuple(temp))
 
-	if not os.path.exists(os.getcwd() + "\\ndas\\local_data\\imported_patients"):
-		os.makedirs(os.getcwd() + "\\ndas\\local_data\\imported_patients")
-	filename = os.getcwd()+"\\ndas\\local_data\\imported_patients\\{}_patient_{}.csv".format(argv[4], argv[3])
+	if not os.path.exists(os.getcwd() + "/ndas/local_data/imported_patients"):
+		os.makedirs(os.getcwd() + "/ndas/local_data/imported_patients")
+	filename = os.getcwd()+"/ndas/local_data/imported_patients/{}_patient_{}.csv".format(argv[4], argv[3])
 	file = open(filename, 'w')
 	writer = csv.writer(file, delimiter=";", quoting=csv.QUOTE_ALL)
 	writer.writerow(firstLine)
@@ -200,55 +169,4 @@ def selectPatient(argv, ssh, databaseConfiguration):
 		writer.writerow(newLine)
 	
 	ssh.close()
-
-def dataDensity(argv, ssh, databaseConfiguration, parameters):
-	if argv[3] == "patientid":
-		if argv[5] == "entriesTotal":
-			# count how many entries exists in the table asic_data_mimic for the given patient id
-			cur.execute("select count(*) from SMITH_ASIC_SCHEME.asic_data_mimic where patientid = {}".format(argv[4]))
-			result = cur.fetchall()
-			print(result)
-			cur.close()
-		else:
-			# count how many entries exists in the table asic_data_mimic for the given patient id where the given parameter column is not null
-			index = 0
-			identifier = ""
-			for arg in argv:
-				if index < 5:
-					index+=1
-					continue
-				found = False
-				for parameter in parameters:
-					if parameter.name == arg and parameter.database == "asic":
-						found = True
-						identifier = identifier + parameter.parameter_identifier + ", "
-				if found == False:
-					print("Unknown parameter " + arg + " in database asic")
-				index+=1
-			identifier = identifier[:-2]
-			identifierComplete = identifier.replace(", ", " and ") + " IS NOT NULL"
-			cur.execute("select count(*) from SMITH_ASIC_SCHEME.asic_data_mimic where patientid = {} and {}".format(argv[4], identifierComplete))
-			result = cur.fetchall()
-			print(result)
-			cur.close()
-	elif argv[3] == "bestPatients":
-		if argv[4] == "entriesTotal":
-			# search for the patient who has the most entries in the given table
-			stdin, stdout, stderr = ssh.exec_command('mysql -h{} -u{} -p{} SMITH_SepsisDB -e "select patientid, entriesTotal from SMITH_ASIC_SCHEME.asic_lookup_{} order by entriesTotal desc limit {};"'.format(databaseConfiguration['host'], databaseConfiguration['username'], databaseConfiguration['password'],argv[6], argv[5]))
-			if stderr.readlines() != []:
-				return -2
-			results = stdout.readlines()
-			results = results[1:]
-			if results == []:
-				return -1
-			return results
-		else: 
-			# search for the patient who has the most entries in the given table for the specified parameters
-			stdin, stdout, stderr = ssh.exec_command('mysql -h{} -u{} -p{} SMITH_SepsisDB -e "select patientid, {} from (select *, ({}) as numberOfEntries from SMITH_ASIC_SCHEME.asic_lookup_{} order by numberOfEntries desc limit {}) as sub;"'.format(databaseConfiguration['host'], databaseConfiguration['username'], databaseConfiguration['password'],argv[4], argv[4].replace(",","+"), argv[6], argv[5]))
-			if stderr.readlines() != []:
-				print(stderr.readlines())
-				return -2
-			results = stdout.readlines()
-			if results[1:] == []:
-				return -1	
-			return results
+# %%
