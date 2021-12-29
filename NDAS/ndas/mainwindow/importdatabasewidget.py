@@ -4,7 +4,7 @@ import os
 from ndas.extensions import data
 from ndas.database_interface import interface
 from ndas.mainwindow.selectparameterswidget import SelectParametersWindow
-
+import pandas as pd
 
 class ImportDatabaseWindow(QMainWindow):
 	def __init__(self, parent=None):
@@ -82,29 +82,30 @@ class DatabaseSettingsWidget(QWidget):
 	# database:		asic_data_sepsis or asic_data_mimic
 	def loadPatient(self, parent, patientid, database):
 		filename = os.getcwd()+"\\ndas\\local_data\\imported_patients\\{}_patient_{}.csv".format(database, str(patientid))
-		result = 0
-		if not os.path.exists(filename):
-			result = interface.startInterface(["interface", "db_asic_scheme.json", "selectPatient", str(patientid), database])
-		if result == -1:
-			QMessageBox.critical(self, "Error", "Patient not found.", QMessageBox.Ok)
+		if os.path.exists(filename):
+			df = pd.read_csv(filename, encoding='utf-8')
 		else:
-			data.set_instance("CSVImporter", filename)
-			data.get_instance().signals.result_signal.connect(
-				lambda result_data, labels: parent.getParent().data_import_result_slot(result_data, labels))
-			data.get_instance().signals.status_signal.connect(lambda status: parent.getParent().progress_bar_update_slot(status))
-			data.get_instance().signals.error_signal.connect(lambda s: parent.getParent().error_msg_slot(s))
-			parent.getParent().thread_pool.start(data.get_instance())
-			parent.close()
+			df = interface.select_patient(patientid, database)
+			df.to_csv(filename, index=False, encoding='utf-8')
+		
+		data.set_instance("CSVImporter", filename)
+		data.get_instance().signals.result_signal.connect(
+			lambda result_data, labels: parent.getParent().data_import_result_slot(result_data, labels))
+		data.get_instance().signals.status_signal.connect(lambda status: parent.getParent().progress_bar_update_slot(status))
+		data.get_instance().signals.error_signal.connect(lambda s: parent.getParent().error_msg_slot(s))
+		parent.getParent().thread_pool.start(data.get_instance())
+		parent.close()
 
 	def showPatients(self, numberOfPatients, database):
-		db = ""
 		if database == "asic_data_mimic":
 			db = "mimic"
 		elif database == "asic_data_sepsis":
 			db = "sepsis"
-		df = interface.startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", "entriesTotal", numberOfPatients, db])
+		else:
+			raise Exception('Invalid database!')
+		df = interface.density_per_patient(numberOfPatients, db)
 		df.columns = ['Patient-ID', 'Number of entries']
-		out = dataframe_to_str(df)
+		out = _dataframe_to_str(df)
 		self.patiendidsLabel.setText(out)
 
 	def showPatientsWithParameter(self, numberOfPatients, database):
@@ -113,8 +114,8 @@ class DatabaseSettingsWidget(QWidget):
 			db = "mimic"
 		elif database == "asic_data_sepsis":
 			db = "sepsis"
-		df = interface.startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", self.parameters, numberOfPatients, db])
-		self.patiendidsLabel2.setText(dataframe_to_str(df))
+		df = interface.density_per_parameter(self.parameters, numberOfPatients, db)
+		self.patiendidsLabel2.setText(_dataframe_to_str(df))
 
 	def chooseParameters(self):
 		self.selectParameters = SelectParametersWindow(self)
@@ -125,7 +126,7 @@ class DatabaseSettingsWidget(QWidget):
 		self.parameters = parameters
 		print(self.parameters)
 
-def dataframe_to_str(df):
+def _dataframe_to_str(df):
 	res = []
 	res.append(' | '.join(df.columns))
 	res.append('----------------')
