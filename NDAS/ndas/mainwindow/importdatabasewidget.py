@@ -38,7 +38,7 @@ class DatabaseSettingsWidget(QWidget):
 		self.patiendidsLabel = QLabel()
 		self.patientIdsScrollbar.setWidget(self.patiendidsLabel)
 		showPatients = QPushButton("Show patient ids")
-		showPatients.clicked.connect(lambda: self.showPatients(parent, self.numberOfPatients.text(), database.currentText()))
+		showPatients.clicked.connect(lambda: self.showPatients(self.numberOfPatients.text(), database.currentText()))
 
 		self.parameterEntriesLabel = QLabel()
 		self.parameterEntriesLabel.setText("Show the patients who has the most entries for a specific parameter:")
@@ -53,7 +53,7 @@ class DatabaseSettingsWidget(QWidget):
 		self.patiendidsLabel2 = QLabel()
 		self.patientIdsScrollbar2.setWidget(self.patiendidsLabel2)
 		showPatients2 = QPushButton("Show patient ids")
-		showPatients2.clicked.connect(lambda: self.showPatientsWithParameter(parent, self.numberOfPatients2.text(), database.currentText()))
+		showPatients2.clicked.connect(lambda: self.showPatientsWithParameter(self.numberOfPatients2.text(), database.currentText()))
 
 		confirm = QPushButton("Confirm")
 		confirm.clicked.connect(lambda: self.loadPatient(parent, self.patientId.text(), database.currentText()))
@@ -96,44 +96,25 @@ class DatabaseSettingsWidget(QWidget):
 			parent.getParent().thread_pool.start(data.get_instance())
 			parent.close()
 
-	def showPatients(self, parent, numberOfPatients, database):
+	def showPatients(self, numberOfPatients, database):
 		db = ""
 		if database == "asic_data_mimic":
 			db = "mimic"
 		elif database == "asic_data_sepsis":
 			db = "sepsis"
-		result = interface.startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", "entriesTotal", numberOfPatients, db])
-		patientids = ["Patient-ID | Number of entries\n", "----------------\n"]
-		if result == -1:
-			patientids = ["No result found"]
-		elif result == -2:
-			patientids = ["An error occured, please enter a valid number."]
-		else:
-			for patient in result:
-				patientSplit = patient.split("\t")
-				patientids.append(patientSplit[0] + " | " + patientSplit[1])
-		self.patiendidsLabel.setText(''.join(patientids))
+		df = interface.startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", "entriesTotal", numberOfPatients, db])
+		df.columns = ['Patient-ID', 'Number of entries']
+		out = dataframe_to_str(df)
+		self.patiendidsLabel.setText(out)
 
-	def showPatientsWithParameter(self, parent, numberOfPatients, database):
+	def showPatientsWithParameter(self, numberOfPatients, database):
 		db = ""
 		if database == "asic_data_mimic":
 			db = "mimic"
 		elif database == "asic_data_sepsis":
 			db = "sepsis"
-		result = interface.startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", self.parameters, numberOfPatients, db])
-		patientids = []
-		if result == -1:
-			patientids = ["No result found"]
-		elif result == -2:
-			patientids = ["An error occured, please enter a valid number and valid parameters."]
-		else:
-			for patient in result:
-				patientSplit = patient.split("\t")
-				temp = patientSplit[0]
-				for i in range(len(patientSplit)-1):
-					temp = temp + " | " + patientSplit[i+1]
-				patientids.append(temp)
-		self.patiendidsLabel2.setText(''.join(patientids))
+		df = interface.startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", self.parameters, numberOfPatients, db])
+		self.patiendidsLabel2.setText(dataframe_to_str(df))
 
 	def chooseParameters(self):
 		self.selectParameters = SelectParametersWindow(self)
@@ -143,3 +124,10 @@ class DatabaseSettingsWidget(QWidget):
 		self.selectedParameters.setText(label)
 		self.parameters = parameters
 		print(self.parameters)
+
+def dataframe_to_str(df):
+	res = []
+	res.append(' | '.join(df.columns))
+	res.append('----------------')
+	res += list(df.astype(str).apply(lambda row: ' | '.join(row), axis=1))
+	return '\n'.join(res)

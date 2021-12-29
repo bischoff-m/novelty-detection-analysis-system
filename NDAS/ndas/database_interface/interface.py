@@ -16,7 +16,8 @@ currentPath = os.path.dirname(__file__)
 
 Table = namedtuple('Table', ['name', 'type', 'relevant_columns', 'parameter_identifier_column'])
 tables = []
-with open("./Interface_tables.csv") as parameter_csv:
+print(os.getcwd())
+with open("./ndas/database_interface/Interface_tables.csv") as parameter_csv:
 	csv_reader_object = csv.reader(parameter_csv, delimiter=";")
 	firstLineFlag = True
 	for row in csv_reader_object:
@@ -27,7 +28,7 @@ with open("./Interface_tables.csv") as parameter_csv:
 
 Parameter = namedtuple('Parameter', ['name','database', 'tables', 'parameter_identifier'])
 parameters = []
-with open("./Interface_parameter.csv") as parameter_csv:
+with open("./ndas/database_interface/Interface_parameter.csv") as parameter_csv:
 	csv_reader_object = csv.reader(parameter_csv, delimiter=";")
 	firstLineFlag = True
 	for row in csv_reader_object:
@@ -53,10 +54,10 @@ with open("./Interface_parameter.csv") as parameter_csv:
 
 def startInterface(argv):
 	########## SSH LOGIN ##########
-	# sshLoginDataFile = open("../local_data/sshSettings.json")
+	# sshLoginDataFile = open("./ndas/local_data/sshSettings.json")
 	# sshLoginData = json.load(sshLoginDataFile)
 
-	# databaseConfigurationFile = open("../local_data/db_asic_scheme.json")
+	# databaseConfigurationFile = open("./ndas/local_data/db_asic_scheme.json")
 	# databaseConfiguration = json.load(databaseConfigurationFile)
 	# # Establish ssh connection to the database server
 	# host = "137.226.78.84"
@@ -92,31 +93,18 @@ def startInterface(argv):
 		ssh.close()
 	return res
 
-# %%
-
 def density_per_patient(argv):
 	df = read_sql_query(f'select patientid, entriesTotal from SMITH_ASIC_SCHEME.asic_lookup_{argv[6]} order by entriesTotal desc limit {argv[5]}')
-	return '\n'.join(df[['patientid', 'entriesTotal']].astype(str).agg(' | '.join, axis=1))
+	return df.astype('int64')
 
-display(startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", "entriesTotal", 10, 'mimic']))
+# display(startInterface(["interface", "db_asic_scheme.json", "dataDensity", "bestPatients", "entriesTotal", 10, 'mimic']))
 
-
-# %%
-
-
-
-# %%
 
 def density_per_parameter(argv, ssh, databaseConfiguration):
-	# search for the patient who has the most entries in the given table for the specified parameters
-	stdin, stdout, stderr = ssh.exec_command('mysql -h{} -u{} -p{} SMITH_SepsisDB -e "select patientid, {} from (select *, ({}) as numberOfEntries from SMITH_ASIC_SCHEME.asic_lookup_{} order by numberOfEntries desc limit {}) as sub;"'.format(databaseConfiguration['host'], databaseConfiguration['username'], databaseConfiguration['password'],argv[4], argv[4].replace(",","+"), argv[6], argv[5]))
-	if stderr.readlines() != []:
-		print(stderr.readlines())
-		return -2
-	results = stdout.readlines()
-	if results[1:] == []:
-		return -1	
-	return results
+	df = read_sql_query(f'select patientid, {argv[4]} from (select *, ({argv[4].replace(",","+")}) as numberOfEntries from SMITH_ASIC_SCHEME.asic_lookup_{argv[6]} order by numberOfEntries desc limit {argv[5]}) as sub')
+	return df
+
+# display(startInterface(['interface', 'db_asic_scheme.json', 'dataDensity', 'bestPatients', 'pao2, fio2_gemessen', '10', 'mimic']))
 
 # %%
 
@@ -168,5 +156,4 @@ def selectPatient(argv, ssh, databaseConfiguration):
 		newLine = list(line)
 		writer.writerow(newLine)
 	
-	ssh.close()
 # %%
